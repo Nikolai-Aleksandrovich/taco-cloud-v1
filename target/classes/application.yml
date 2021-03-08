@@ -1,0 +1,42 @@
+sever:
+  port: 9090
+greeting:
+  welcome: ${spring.application.name}
+  welcome2: YOU ARE USING ${spring.application.name}
+
+Taco:
+  orders:
+    pageSize: 10
+spring:
+  datasource:
+    schema:
+      - order-schema.sql
+      - ingredient-schema.sql
+      - taco-schema.sql
+      - user-schema.sql
+    data:
+      - ingredients.sql
+    url: jdbc:mysql://localhost/tacocloud
+    username: tacodb
+    password: tacopassword
+    driver-class-name: com.mysql.jdbc.Driver
+
+logging:
+  filepath: /var/logs/
+  file: TacoCloud.log
+  level:
+    root: WARN
+    org:
+      springframework:
+        security: DEBUG
+---
+spring:
+  profile: prod
+    datasource:
+      url: jdbc:mysql://localHost/tacocloud
+      username: tacouser
+      password: tacopassword
+  logging:
+    level:
+      tacos: WARN
+
