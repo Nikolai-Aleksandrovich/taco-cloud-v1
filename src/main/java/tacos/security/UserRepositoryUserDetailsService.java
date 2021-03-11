@@ -5,7 +5,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
-import tacos.User;
+import tacos.domain.User;
 import tacos.data.UserRepository;
 
 /**
@@ -13,18 +13,22 @@ import tacos.data.UserRepository;
  * @create 2021-01-27 16:13
  */
 @Service
-public class UserRepositoryUserDetailsService implements UserDetailsService {
-    private UserRepository userRepo;
-    @Autowired
-    public UserRepositoryUserDetailsService(UserRepository userRepo){
-        this.userRepo=userRepo;
-    }
+public class UserRepositoryUserDetailsService implements UserDetailsService{
+
+     private UserRepository userRepository;
+     @Autowired
+     public UserRepositoryUserDetailsService(UserRepository userRepository){
+         this.userRepository=userRepository;
+     }
+
+
     @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepo.findByUsername(username);
+    public UserDetails loadUserByUsername(String s) throws UsernameNotFoundException {
+        User user = userRepository.findByUsername(s);
         if(user!=null){
             return user;
         }
-        throw new UsernameNotFoundException("User'"+username+"'not found");
+        throw new UsernameNotFoundException("User '"+s+"' not found");
     }
+
 }

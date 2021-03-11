@@ -4,12 +4,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.password.StandardPasswordEncoder;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 
 import javax.sql.DataSource;
 
@@ -33,6 +35,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     private UserDetailsService userDetailsService;
     @Override
     protected void configure(AuthenticationManagerBuilder auth) throws Exception{
+        auth.userDetailsService(userDetailsService)
+        .passwordEncoder(new BCryptPasswordEncoder());
         /**
          * @author Yuyuan Huang
          * @create 2021-01-27 14:19
@@ -76,7 +80,47 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 //                .url("ldap://tacocloud.com:389/dc=tacocloud,dc=com");
          */
         //自定义用户认证
-        auth.userDetailsService(userDetailsService)
-        .passwordEncoder(encoder());
+
     }
+    @Override
+    protected void configure(HttpSecurity httpSecurity) throws Exception{
+        httpSecurity
+                .authorizeRequests()
+                .antMatchers("/design","/orders")
+                .hasRole("ROLE_USER")
+                .antMatchers("/","/**")
+                .permitAll()
+                .and()
+                .formLogin()
+                .loginPage("/login")
+                .loginProcessingUrl("/authenticate")
+                .usernameParameter("user")
+                .passwordParameter("pwd")
+                .defaultSuccessUrl("/design")
+                .and()//and连接配置块，并设置退出的页面
+                .logout()
+                .logoutSuccessUrl("/");
+    }
+
+//    @Override
+//    protected void configure(HttpSecurity httpSecurity) throws  Exception{
+//        //使用Spring SPEL表达式
+//        httpSecurity
+//                .authorizeRequests()
+//                .antMatchers("/design","/orders")
+//                .access("hasRole('ROLE_USER')")
+//                .antMatchers("/","/**")
+//                .access("permitAll");
+//
+//    }
+//    @Override
+//    protected void configure(HttpSecurity httpSecurity)throws Exception{
+//        //使用Spring SPEL表达式，规定只有周二才能下单
+//        httpSecurity
+//                .authorizeRequests()
+//                .antMatchers("/design","order")
+//                .access("hasRole('ROLE_USER')&&"+"T(java.util.Calendar).getInstance().get("+"T(java.util.Calendar).DAY_OF_WEEK)=="+"T(java.util.Calendar).TUESDAY")
+//                .antMatchers("/","/**")
+//                .access("permitAll");
+//    }
 }
