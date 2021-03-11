@@ -1,8 +1,10 @@
 package tacos.data;
 
 import org.springframework.data.repository.CrudRepository;
-import tacos.Order;
+import tacos.domain.Order;
+import tacos.domain.User;
 
+import java.awt.print.Pageable;
 import java.util.List;
 
 /**
@@ -12,4 +14,5 @@ import java.util.List;
 public interface JPAOrderRepository extends CrudRepository<Order,Long> {
     //指定Order实体和数据库主键的类型
     List<Order> findByDeliverZip(String deliverZip);
+    List<Order> findByUserOrderByPlaceAtDesc(User user, Pageable pageable);
 }
