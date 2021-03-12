@@ -1488,3 +1488,471 @@ public MessageChannel orderChannel() {
 @ServiceActovator(inputChannel="orderChannel")
 ```
 
+如果使用 Java DSL 配置方式，需要通过调用 channel() 方法引用它
+
+```
+@Bean
+public IntegrationFlow orderFlow() {
+    return IntegrationFlows
+        ...
+        .channel("orderChannel")
+        ...
+        .get();
+}
+```
+
+如果使用 QueueChannel，则必须为使用者配置一个轮询器poller。例如：
+
+```
+@Bean
+public MessageChannel orderChannel() {
+    return new QueueChannel();
+}
+```
+
+需要确保将使用者配置为轮询消息通道。在服务激活器的情况下，@ServiceActivator 注解可能是这样的：
+
+```
+@ServiceActivator(inputChannel="orderChannel", poller=@Poller(fixedRate="1000"))
+//服务激活器每秒（或 1,000 ms）从名为 orderChannel 的通道轮询一次
+```
+
+##### 过滤器
+
+过滤器可以放置在集成管道的中间，以允许或不允许消息进入流中的下一个步骤
+
+只希望偶数传递到名为 evenNumberChannel 的通道。：
+
+```
+@Bean
+public IntegrationFlow evenNumberFlow(AtomicInteger integerSource) {
+    return IntegrationFlows
+        ...
+        .<Integer>filter((p) -> p % 2 == 0)
+        ...
+        .get();
+}
+```
+
+如果过滤器过于复杂，可以实现GenericSelector接口作为替代方案，而不是lambda表达式
+
+#### 转换器
+
+转换器对消息执行一些操作，通常会产生不同的消息，并且可能会产生不同的负载类型。
+
+假设正在一个名为 numberChannel 的通道上发布整数值，并且希望将这些数字转换为包含等效罗马数字的 String 字符串
+
+```
+@Bean
+    @Transformer(inputChannel = "numberChannel",outputChannel = "romanNumberChannel")
+    // @Transformer 注解将 bean 指定为 transformer bean
+    //从名为 numberChannel 的通道接收整数值，并使用 toRoman()的静态方法进行转换，得到的结果被发布到名为 romanNumberChannel 的通道中。
+    //toRoman在一个名为 RomanNumbers 的类中静态定义的，并在这里通过方法引用进行引用
+    public GenericTransformer<Integer,String> romanNumTransformer(){
+        return RomanNumbers::toRoman;
+    }
+```
+
+在 Java DSL 配置风格中，直接使用build风格把方法引用传递给 toRoman() 方法即可
+
+```
+@Bean
+public IntegrationFlow transformerFlow() {
+    return IntegrationFlows
+        ...
+        .transform(RomanNumbers::toRoman)
+        ...
+        .get();
+}
+```
+
+如果 transformer 比较复杂，需要单独的成为一个 Java 类，可以将它作为 bean 注入流配置，并将引用传递给 transform() 方法：
+
+```
+@Bean
+public RomanNumberTransformer romanNumberTransformer() {
+    return new RomanNumberTransformer();
+    //声明了一个 RomanNumberTransformer 类型的 bean，它本身是 Spring Integration 的 Transformer 或 GenericTransformer 接口的实现
+}
+@Bean
+public IntegrationFlow transformerFlow(
+    RomanNumberTransformer romanNumberTransformer) {
+    //bean 被注入到 transformerFlow() 方法，并在定义集成流时传递给 transform() 方法。
+    return IntegrationFlows
+        ...
+        .transform(romanNumberTransformer)
+        ...
+        .get();
+}
+```
+
+#### 路由
+
+基于某些路由标准的路由器允许在集成流中进行分支，将消息定向到不同的通道。
+
+假设有一个名为 numberChannel 的通道，整数值通过它流动。假设希望将所有偶数消息定向到一个名为 evenChannel 的通道，而将奇数消息定向到一个名为 oddChannel 的通道。要在集成流中创建这样的路由，可以声明一个 AbstractMessageRouter 类型的 bean，并使用 @Router 注解该 bean：
+
+```
+@Bean
+    public MessageChannel evenChannel(){
+        return new DirectChannel();
+    }
+    @Bean
+    public MessageChannel oddChannel(){
+        return new DirectChannel();
+    }
+    @Bean
+    @Router(inputChannel = "numberChannel")
+    public AbstractMessageRouter evenOdderRouter(){
+        return new AbstractMessageRouter() {
+            //AbstractMessageRouter bean 接受来自名为 numberChannel 的输入通道的消息。
+            @Override
+            protected Collection<MessageChannel> determineTargetChannels(Message<?> message) {
+                //定义为匿名内部类的实现检查消息有效负载
+                Integer number = (Integer) message.getPayload();
+                if(number%2==0){
+                    return Collections.singleton(oddChannel());
+                    //它是偶数，则返回名为 evenChannel 的通道
+                }
+                return Collections.singleton(oddChannel());
+                //否则，通道有效载荷中的数字必须为奇数
+            }
+        };
+    }
+```
+
+在JavaDSL中，路由器是通过在流定义过程中调用 route() 来声明的，
+
+```
+@Bean
+public IntegrationFlow numberRoutingFlow(AtomicInteger source) {
+    return IntegrationFlows
+        ...
+        .<Integer, String>route(n -> n%2==0 ? "EVEN":"ODD", mapping ->
+            mapping.subFlowMapping("EVEN", sf -> 
+               sf.<Integer, Integer>transform(n -> n * 10).handle((i,h) -> { ... }))
+                 .subFlowMapping("ODD", sf -> 
+                     sf.transform(RomanNumbers::toRoman).handle((i,h) -> { ... }))
+            )
+        .get();
+}
+```
+
+如果是偶数，则返回一个偶数的字符串值。如果是奇数，则返回奇数。然后使用这些值来确定哪个子映射将处理消息。
+
+##### 分割器
+
+将消息拆分为多个独立处理的消息，使用splitter的情况：
+
+* 消息有效载荷，包含单个消息有效载荷相同类型的项的集合。
+
+* 信息有效载荷，携带的信息虽然相关，但可以分为两种或两种以上不同类型的信息。
+
+当将消息有效负载拆分为两个或多个不同类型的消息时，通常只需定义一个 POJO 即可，该 POJO 提取传入的有效负载的各个部分，并将它们作为集合的元素返回。
+
+```
+public class OrderSplitter {
+    public Collection<Object> splitOrderIntoParts(PurchaseOrder po){
+        ArrayList<Object> parts = new ArrayList<>();
+        //将携带购买订单的消息拆分为两条消息：一条携带账单信息，另一条携带项目列表。
+        parts.add(po.getBillingInfo());
+        parts.add(po.getLineItems());
+        return parts;
+    }
+    @Bean
+    @Splitter(inputChannel = "poChannel",outputChannel = "splitOrderChannel")
+    //@Splitter 注解将 OrderSplitter bean 声明为集成流的一部分
+    public OrderSplitter orderSplitter(){
+        return new OrderSplitter();
+    }
+    //购买订单到达名为 poChannel 的通道，并被 OrderSplitter 分割。然后，将返回集合中的每个项作为集成流中的单独消息发布到名为 splitOrderChannel 的通道。
+    @Bean
+    @Router(inputChannel = "splitOrderChannel")
+    public MessageRouter splitOrderRouter(){
+        PayloadTypeRouter router = new PayloadTypeRouter();
+        //将消息路由到不同的通道
+        router.setChannelMapping(
+                BillingInfo.class.getName(),"billingInfoChannel"
+        );
+        //将有效负载为类型为 BillingInfo 的消息路由到一个名为 billingInfoChannel 的通道进行进一步处理。
+        router.setChannelMapping(List.class.getName(),"lineItemChannel");
+        //将 List 类型的有效负载映射到名为 lineItemsChannel 的通道中。
+        return router;
+    }
+}
+```
+
+如果想进一步分割 LineItem 列表，分别处理每个 LineItem，要将列表拆分为多个消息（每个行项对应一条消息），只需编写一个方法（而不是 bean），该方法使用 @Splitter 进行注解，并返回 LineItems 集合
+
+```
+@Splitter(inputChannel = "lineItemsChannel",outputChannel = "lineItemChannel")
+    public List<LineItem> lineItemSplitter(List<LineItem> lineItems){
+        return lineItems;
+        //当携带 List<LineItem> 的有效负载的消息到达名为 lineItemsChannel 的通道时，它将传递到 lineItemSplitter() 方法。
+        //集合中的每个 LineItem 都以其自己的消息形式发布到名为 lineItemChannel 的通道。
+    }
+```
+
+使用 Java DSL 来声明相同的 Splitter/Router 配置，可以调用 split() 和 route()：
+
+```
+return IntegrationFlows
+    ...
+    .split(orderSplitter())
+    .<Object, String> route(p -> {
+        if (p.getClass().isAssignableFrom(BillingInfo.class)) {
+            return "BILLING_INFO";
+        } else {
+            return "LINE_ITEMS";
+        }
+    }, mapping ->
+           mapping.subFlowMapping("BILLING_INFO", sf -> 
+                      sf.<BillingInfo> handle((billingInfo, h) -> { ... }))
+                  .subFlowMapping("LINE_ITEMS", sf -> 
+                       sf.split().<LineItem> handle((lineItem, h) -> { ... }))
+    )
+    .get();
+```
+
+##### 服务激活器
+
+服务激活器从输入信道接收消息并发送这些消息给 MessageHandler的实现（调用某个服务）
+
+Spring 集成提供了多种的 MessageHandler 实现开箱即用，但也可以定制实现充当服务激活
+
+如何声明 MessageHandler bean，构成为一个服务激活器
+
+```
+@Bean
+    @ServiceActivator(inputChannel = "someChannel")
+    //@ServiceActivator 注解 bean，将其指定为一个服务激活器
+    public MessageHandler sysOutHandler(){
+        return message -> {
+            System.out.println("Message payload:" + message.getPayload());
+            //给定的消息时，它发出其有效载荷的标准输出流
+        };
+    }
+```
+
+另外，可以声明一个服务激活器，用于在返回一个新的有效载荷之前处理传入的消息。在这种情况下，这个 bean 应该是一个 GenericHandler 而非的 MessageHandler：
+
+```
+@Bean
+    @ServiceActivator(inputChannel = "orderChannel",outputChannel = "completeOrder")
+    public GenericHandler<Order> orderHandler(JPAOrderRepository orderRepository){
+    //服务激活器是一个 GenericHandler，有效载荷为 Order 类型
+        return (payload,headers) -> {
+        //保存 Order 后产生的结果被发送到名称为 completeChannel 的输出通道。
+            return orderRepository.save(payload);
+            //当订单到达，它是通过 repository 进行保存；
+            //返回一个新的有效载荷之前处理传入的消息
+        };
+    }
+```
+
+同时也可以通过传递了 MessageHandler 或 GenericHandler 去调用在流定义中的 handler() 方法，来使用在 Java DSL 配置式中的服务激活器：
+
+```
+public IntegrationFlow someFlow() {
+    return IntegrationFlows
+        ...
+        .handle(msg -> {
+            System.out.println("Message payload: " + msg.getPayload());
+            //MessageHandler 是作为一个 lambda，但也可以将它作为一个参考方法甚至是一个类，它实现了 MessageHandler 接口。
+        })
+        .get();
+}
+```
+
+如果服务激活器不是流的结束，handler() 可以接受 GenericHandler 。从之前应用订单存储服务激活器来看，可以使用 Java DSL 对流程进行配置
+
+```
+public IntegrationFlow orderFlow(OrderRepository orderRepo) {
+    return IntegrationFlows
+        ...
+        .<Order>handle((payload, headers) -> {
+            return orderRepo.save(payload);
+        })
+        ...
+        .get();
+}
+```
+
+如果选择在一个流程的结束使用 GenericHandler，需要返回 null，否则会得到这表明有没有指定输出通道的错误。
+
+##### 网关
+
+网关是通过一个应用程序可以将数据提交到一个集成信息流，也能可选的接收流的结果作为响应的，会声明为接口，应用借助Spring Integration调用他发送信息到集成流。
+
+编写一个双向网关也很容易。当写网关接口时，确保该方法返回某个值发布到集成流。
+
+假设一个网关处理接受一个 String 的简单集成信息流，并把特定的 String 转成大写。网关接口可能是这个样子：
+
+```
+@Component
+@MessagingGateway(defaultRequestChannel = "inChannel",defaultReplyChannel = "outChannel")
+//没有必要实现这个接口,Spring Integration 自动提供运行时实现，这个实现会使用特定的通道进行数据的发送与接收。
+public interface UpperCaseGateway {
+    String uppercase(String in);
+    //当 uppercase() 被调用时，给定的 String 被发布到名为 inChannel 的集成流通道中。而且，不管流是如何定义的或是它是做什么的，在当数据到达名为 outChannel 通道时，它从 uppercase() 方法中返回。
+}
+
+```
+
+使用 Java DSL 配置的uppercase集成流
+
+```
+@Bean
+    public IntegrationFlow uppercaseFlow(){
+        return IntegrationFlows
+                .from("inChannel")
+                .<String,String>transform(s -> s.toUpperCase())
+                .channel("ouyChannel")
+                .get();
+    }
+```
+
+##### 通道适配器
+
+通道适配器代表集成信息流的入口点和出口点。数据通过入站信道适配器的方式进入到集成流中，通过出站信道适配器的方式离开集成流。
+
+入站信道的适配器可以采取多种形式，这取决于它们引入到流的数据源。
+
+例如，声明一个入站通道适配器，它采用从 AtomicInteger 到流递增的数字。
+
+```
+@Bean
+    @InboundChannelAdapter(
+            poller = @Poller(fixedRate = "1000"),channel = "numberChannel"
+    )
+    public MessageSource<Integer> numberSource(AtomicInteger source){
+        return () -> {
+            return new GenericMessage<>(source.getAndIncrement());
+        };
+    } 
+```
+
+在 Java DSL 配置中类似的输入通道适配器：
+
+```
+@Bean
+public IntegrationFlow someFlow(AtomicInteger integerSource) {
+    return IntegrationFlows
+        .from(integerSource, "getAndIncrement",
+              c -> c.poller(Pollers.fixedRate(1000)))
+              //from() 方法就是使用 Java DSL 来定义流的时候，表明它是怎么处理的。
+        ...
+        .get();
+}
+```
+
+通常情况下，通道适配器通过的 Spring Integration 的多端点模块之一进行提供。
+
+假设需要一个入站通道适配器，用它来监视指定的目录，同时将任何写入到那个目录中的文件作为消息，提交到名为 file-channel 的通道中。
+
+下面的 Java 配置使用 FileReadingMessageSource 从 Spring Integration 的文件端点模块来实现这一目标：
+
+```
+@Bean
+@InboundChannelAdapter(channel="file-channel",
+                       poller=@Poller(fixedDelay="1000"))
+public MessageSource<File> fileReadingMessageSource() {
+    FileReadingMessageSource sourceReader = new FileReadingMessageSource();
+    sourceReader.setDirectory(new File(INPUT_DIR));
+    sourceReader.setFilter(new SimplePatternFileListFilter(FILE_PATTERN));
+    return sourceReader;
+}
+```
+
+或者基于Java DSL
+
+```
+@Bean
+public IntegrationFlow fileReaderFlow() {
+    return IntegrationFlows
+        .from(Files.inboundAdapter(new File(INPUT_DIR))
+              .patternFilter(FILE_PATTERN))
+        .get();
+}
+```
+
+##### 端点模块
+
+Spring Integration 提供了端点模块适配器，包括入站和出站，用于与各种常用外部系统进行集成
+
+| 模块                      | 依赖的 Artifact ID             |
+| ------------------------- | ------------------------------ |
+| AMQP                      | spring-integration-amqp        |
+| Spring application events | spring-integration-event       |
+| RSS and Atom              | spring-integration-feed        |
+| Filesystem                | spring-integration-file        |
+| FTP/FTPS                  | spring-integration-ftp         |
+| GemFire                   | spring-integration-gemfire     |
+| HTTP                      | spring-integration-http        |
+| JDBC                      | spring-integration-jdbc        |
+| JPA                       | spring-integration-jpa         |
+| JMS                       | spring-integration-jms         |
+| Email                     | spring-integration-mail        |
+| MongoDB                   | spring-integration-mongodb     |
+| MQTT                      | spring-integration-mqtt        |
+| Redis                     | spring-integration-redis       |
+| RMI                       | spring-integration-rmi         |
+| SFTP                      | spring-integration-sftp        |
+| STOMP                     | spring-integration-stomp       |
+| Stream                    | spring-integration-stream      |
+| Syslog                    | spring-integration-syslog      |
+| TCP/UDP                   | spring-integration-ip          |
+| Twitter                   | spring-integration-twitter     |
+| Web                       | Services spring-integration-ws |
+| WebFlux                   | spring-integration-webflux     |
+| WebSocket                 | spring-integration-websocket   |
+| XMPP                      | spring-integration-xmpp        |
+| ZooKeeper                 | spring-integration-zookeeper   |
+
+##### 使用Email端点模块，创建Email集成流
+
+实现一个集成信息流，用于轮询 Taco Cloud 收件箱中的 taco 订单电子邮件，并解析邮件订单的详细信息，然后提交订单到 Taco Cloud 进行处理。
+
+总之，将从邮箱端点模块中使用入站通道适配器，用于把 Taco Cloud 收件箱中的邮件提取到集成流中。
+
+在集成信息流中，电子邮件将被解析为订单对象，接着被传递到另外一个向 Taco Cloud 的 REST API 提交订单的处理器中，在那里，它们将如同其他订单一样被处理。
+
+首先，定义一个简单的配置属性的类，来捕获如何处理 Taco Cloud 电子邮件：
+
+```
+@Data
+@Component
+@ConfigurationProperties(prefix = "tacocloud.email")
+//在 application.yml 配置文件中详细配置 email 的信息：
+public class EmailProperties {
+    private String username;
+    private String password;
+    private String host;
+    private String mailbox;
+    private long pollRate = 30000;
+
+    public String getImapUrl(){
+        return String.format("imaps://%s:%s%s/%s",this.username,this.password,this.host,this.mailbox);
+        //使用 get() 方法来产生一个 IMAP URL。流就使用这个 URL 连接到 Taco Cloud 的电子邮件服务器，然后轮询电子邮件。所捕获的属性中包括，用户名、密码、IMAP服务器的主机名、轮询的邮箱和该邮箱被轮询频率
+    }
+}
+```
+
+application.yml:
+
+```
+tacocloud:
+  email:
+    host: imap.tacocloud.com
+    mailbox: INBOX
+    username: taco-in-flow
+    password: 1L0v3T4c0s
+    poll-rate: 10000
+```
+
+使用 EmailProperties 去配置集成流有两种选择:
+
+- *定义在 Taco Cloud 应用程序本身里面* -- 在流结束的位置，服务激活器将调用定义了的存储库来创建 taco 订单。
+- *定义在一个单独的应用程序中* -- 在流结束的位置，服务激活器将发送 POST 请求到 Taco Cloud API 来提交 taco 订单。
+
+无论选择那种服务激活器的实现，集成流的设计没有影响，但需要配置不同的taco类，order类，Ingredient类，所以在一个单独的应用程序中集成信息流，可以避免与现有的域类型混淆进行。
