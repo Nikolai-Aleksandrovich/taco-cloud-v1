@@ -600,7 +600,7 @@ Spring 通过称为 JmsTemplate 的基于模板的抽象来支持 JMS。使用 J
 
 如果使用 ActiveMQ，需要添加以下依赖到项目的 pom.xml 文件中：
 
-```
+```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-activemq</artifactId>
@@ -609,7 +609,7 @@ Spring 通过称为 JmsTemplate 的基于模板的抽象来支持 JMS。使用 J
 
 如果选择 ActiveMQ Artemis，starter 如下所示：
 
-```
+```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-artemis</artifactId>
@@ -947,7 +947,7 @@ RabbitMQ 可以说是 AMQP 最优秀的实现, JMS 消息使用接收方将从�
 
 将 Spring Boot 的 AMQP starter 依赖项添加到构建中，以取代在前一节中添加的 Artemis 或 ActiveMQ starter：
 
-```
+```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-amqp</artifactId>
@@ -964,7 +964,7 @@ RabbitMQ 可以说是 AMQP 最优秀的实现, JMS 消息使用接收方将从�
 
 例如，假设在进入生产环境时，RabbitMQ Broker 位于一个名为 rabbit.tacocloud.com 的服务器上，监听端口 5673，并需要凭据。在这种情况下，应用程序中的以下配置。当 prod 配置文件处于活动状态时，yml 文件将设置这些属性：
 
-```
+```yml
 spring:
   profiles: prod
   rabbitmq:
@@ -1029,7 +1029,7 @@ spring:
 
 使用 convertAndSend() 让 RabbitTemplate 处理所有的转换工作更加简单
 
-```
+```java
 public void sendOrder(Order order) {
     rabbit.convertAndSend("tacocloud.order", order);
 }
@@ -1051,7 +1051,7 @@ MessagingMessageConverter —— 将消息转换委托给底层 MessageConverter
 
 如果需要修改消息转换器，需要做的是配置 MessageConverter bean：
 
-```
+```java
 @Bean
 public MessageConverter messageConverter() {
     return new Jackson2JsonMessageConverter();
@@ -1064,7 +1064,7 @@ Spring Boot 的自动配置将会发现这个 bean 并 RabbitTemplate 的缺省�
 
 与 JMS 一样，可能需要在发送的消息中设置一些标题。例如，假设需要为通过 Taco Cloud 网站提交的所有订单发送一个 X_ORDER_SOURCE。在创建 Message 对象时，可以通过提供给消息转换器的 MessageProperties 实例设置消息头。
 
-```
+```java
 public void sendOrder(Order order) {
     MessageConverter converter = rabbit.getMessageConverter();
     MessageProperties props = new MessageProperties();
@@ -1077,7 +1077,7 @@ public void sendOrder(Order order) {
 
 在使用 convertAndSend() 时，不能快速访问 MessageProperties 对象。不过，利用MessagePostProcessor 可以做到
 
-```
+```java
 @Override
     public void sengOrder(Order order){
         rabbitTemplate.convertAndSend("tacocloud.order", order, new MessagePostProcessor() {
@@ -1144,7 +1144,7 @@ public class RabbitOrderReceiver {
 }
 ```
 
-```
+```yml
 spring:
   rabbitmq:
     template:
@@ -1153,7 +1153,7 @@ spring:
 
 也可以直接使用receiveAndConvert
 
-```
+```java
 public Order receiveOrder(){
         return (Order) rabbitTemplate.receiveAndConvert("tacocloud.order.queue");
     }
@@ -1161,7 +1161,7 @@ public Order receiveOrder(){
 
 可以在类型转换的地方使用更类型安全的PTR
 
-```
+```java
  public Order receiveOrder(){
         return rabbitTemplate.receiveAndConvert("tacocloud.order.queue", new ParameterizedTypeReference<Order>() {
             @Override
@@ -1176,7 +1176,7 @@ public Order receiveOrder(){
 
 要指定当消息到达 RabbitMQ 队列时应该调用某个方法，在相应的 bean 方法上使用 @RabbitTemplate 进行注解 。
 
-```
+```java
 @Component
 public class OrderListener {
     private KitchenUI ui;
@@ -1203,7 +1203,7 @@ Kafka topic 被复制到集群中的所有 broker 中。集群中的每个节点
 
 Kafka 没有 Spring Boot starter。不过还是只需要一个依赖：
 
-```
+```xml
 <dependency>
     <groupId>org.springframework.kafka</groupId>
     <artifactId>spring-kafka</artifactId>
@@ -1216,7 +1216,7 @@ KafkaTemplate 默认在 localhost 上运行 Kafka broker，并监听 9092 端口
 
 spring.kafka.bootstrap-servers 属性设置一个或多个 Kafka 服务器的位置，用于建立到 Kafka 集群的初始连接。例如，如果集群中的 Kafka 服务器之一运行在 Kafka .tacocloud.com 上，并监听 9092 端口，那么可以在 YAML 中像这样配置它的位置：
 
-```
+```yml
 spring:
   kafka:
     bootstrap-servers:
@@ -1254,7 +1254,7 @@ ListenableFuture<SendResult<K, V>> sendDefault(Integer partition, Long timestamp
 
 使用 KafkaTemplate 及其 send() 方法:
 
-```
+```java
 @Service
 public class KafkaOrderMessagingService implements OrderMessagingService {
 
@@ -1274,7 +1274,7 @@ public class KafkaOrderMessagingService implements OrderMessagingService {
 
 简化：通过设置 spring.kafka.template.default-topic 属性，将默认主题设置为 tacocloud.orders.topic：
 
-```
+```yml
 spring:
   kafka:
     template:
@@ -1283,7 +1283,7 @@ spring:
 
 然后，在 sendOrder() 方法中，可以调用 sendDefault() 而不是 send()，并且不指定主题名称：
 
-```
+```java
 @Override
 public void sendOrder(Order order) {
     kafkaTemplate.sendDefault(order);
@@ -1294,7 +1294,7 @@ public void sendOrder(Order order) {
 
 kafka不提供任何接收消息的方法，使用 Spring 消费来自 Kafka 主题的消息的唯一方法是编写消息监听器。
 
-```
+```java
 @Component
 public class OrderListener {
     private KitchenUI ui;
@@ -1311,7 +1311,7 @@ public class OrderListener {
 
 只为 handle() 方法提供了一个 Order（payload）参数 。但是，如果需要来自消息的其他元数据，它也可以接受一个 ConsumerRecord 或 Message 对象。
 
-```
+```java
 @Component
 @Slf4j
 public class OrderListener {
@@ -1341,7 +1341,7 @@ public class OrderListener {
 
 第二个依赖项是 Spring Integration 的文件端点模块。文件端点模块提供了将文件从文件系统提取到集成流或将数据从流写入文件系统的能力
 
-```
+```xml
 	<dependency>
 		<groupId>org.springframework.integration</groupId>
 		<artifactId>spring-integration-core</artifactId>
@@ -1356,7 +1356,7 @@ public class OrderListener {
 
 需要为应用程序创建一种将数据发送到集成流的方法，以便将数据写入文件。为此，将创建一个网关接口
 
-```
+```java
 @MessagingGateway(defaultRequestChannel = "textInChannel")
 //由 @MessagingGateway 注解,Spring Integration 在运行时生成这个接口的实现
 //@MessagingGateway 的 defaultRequestChannel 属性表示，对接口方法的调用产生的任何消息都应该发送到textInChannel的消息通道。
@@ -1413,7 +1413,7 @@ public class FileWriterIntegrationConfig {
 
 #### 使用 Spring Integration 的 DSL 配置
 
-```
+```java
 @Configuration
 public class FileWriterIntegrationConfig {
     @Bean
@@ -1475,7 +1475,7 @@ Spring Integration 提供了多个管道的实现，包括以下这些：
 
 比如：
 
-```
+```java
 @Bean
 public MessageChannel orderChannel() {
     return new PublishSubscribeChannel();
@@ -1484,13 +1484,13 @@ public MessageChannel orderChannel() {
 
 然后在集成流定义中通过名称引用这个通道。
 
-```
+```java
 @ServiceActovator(inputChannel="orderChannel")
 ```
 
 如果使用 Java DSL 配置方式，需要通过调用 channel() 方法引用它
 
-```
+```java
 @Bean
 public IntegrationFlow orderFlow() {
     return IntegrationFlows
@@ -1503,7 +1503,7 @@ public IntegrationFlow orderFlow() {
 
 如果使用 QueueChannel，则必须为使用者配置一个轮询器poller。例如：
 
-```
+```java
 @Bean
 public MessageChannel orderChannel() {
     return new QueueChannel();
@@ -1512,7 +1512,7 @@ public MessageChannel orderChannel() {
 
 需要确保将使用者配置为轮询消息通道。在服务激活器的情况下，@ServiceActivator 注解可能是这样的：
 
-```
+```java
 @ServiceActivator(inputChannel="orderChannel", poller=@Poller(fixedRate="1000"))
 //服务激活器每秒（或 1,000 ms）从名为 orderChannel 的通道轮询一次
 ```
@@ -1523,7 +1523,7 @@ public MessageChannel orderChannel() {
 
 只希望偶数传递到名为 evenNumberChannel 的通道。：
 
-```
+```java
 @Bean
 public IntegrationFlow evenNumberFlow(AtomicInteger integerSource) {
     return IntegrationFlows
@@ -1542,7 +1542,7 @@ public IntegrationFlow evenNumberFlow(AtomicInteger integerSource) {
 
 假设正在一个名为 numberChannel 的通道上发布整数值，并且希望将这些数字转换为包含等效罗马数字的 String 字符串
 
-```
+```java
 @Bean
     @Transformer(inputChannel = "numberChannel",outputChannel = "romanNumberChannel")
     // @Transformer 注解将 bean 指定为 transformer bean
@@ -1555,7 +1555,7 @@ public IntegrationFlow evenNumberFlow(AtomicInteger integerSource) {
 
 在 Java DSL 配置风格中，直接使用build风格把方法引用传递给 toRoman() 方法即可
 
-```
+```java
 @Bean
 public IntegrationFlow transformerFlow() {
     return IntegrationFlows
@@ -1568,7 +1568,7 @@ public IntegrationFlow transformerFlow() {
 
 如果 transformer 比较复杂，需要单独的成为一个 Java 类，可以将它作为 bean 注入流配置，并将引用传递给 transform() 方法：
 
-```
+```java
 @Bean
 public RomanNumberTransformer romanNumberTransformer() {
     return new RomanNumberTransformer();
@@ -1592,7 +1592,7 @@ public IntegrationFlow transformerFlow(
 
 假设有一个名为 numberChannel 的通道，整数值通过它流动。假设希望将所有偶数消息定向到一个名为 evenChannel 的通道，而将奇数消息定向到一个名为 oddChannel 的通道。要在集成流中创建这样的路由，可以声明一个 AbstractMessageRouter 类型的 bean，并使用 @Router 注解该 bean：
 
-```
+```java
 @Bean
     public MessageChannel evenChannel(){
         return new DirectChannel();
@@ -1623,7 +1623,7 @@ public IntegrationFlow transformerFlow(
 
 在JavaDSL中，路由器是通过在流定义过程中调用 route() 来声明的，
 
-```
+```java
 @Bean
 public IntegrationFlow numberRoutingFlow(AtomicInteger source) {
     return IntegrationFlows
@@ -1650,7 +1650,7 @@ public IntegrationFlow numberRoutingFlow(AtomicInteger source) {
 
 当将消息有效负载拆分为两个或多个不同类型的消息时，通常只需定义一个 POJO 即可，该 POJO 提取传入的有效负载的各个部分，并将它们作为集合的元素返回。
 
-```
+```java
 public class OrderSplitter {
     public Collection<Object> splitOrderIntoParts(PurchaseOrder po){
         ArrayList<Object> parts = new ArrayList<>();
@@ -1684,7 +1684,7 @@ public class OrderSplitter {
 
 如果想进一步分割 LineItem 列表，分别处理每个 LineItem，要将列表拆分为多个消息（每个行项对应一条消息），只需编写一个方法（而不是 bean），该方法使用 @Splitter 进行注解，并返回 LineItems 集合
 
-```
+```java
 @Splitter(inputChannel = "lineItemsChannel",outputChannel = "lineItemChannel")
     public List<LineItem> lineItemSplitter(List<LineItem> lineItems){
         return lineItems;
@@ -1695,7 +1695,7 @@ public class OrderSplitter {
 
 使用 Java DSL 来声明相同的 Splitter/Router 配置，可以调用 split() 和 route()：
 
-```
+```java
 return IntegrationFlows
     ...
     .split(orderSplitter())
@@ -1722,7 +1722,7 @@ Spring 集成提供了多种的 MessageHandler 实现开箱即用，但也可以
 
 如何声明 MessageHandler bean，构成为一个服务激活器
 
-```
+```java
 @Bean
     @ServiceActivator(inputChannel = "someChannel")
     //@ServiceActivator 注解 bean，将其指定为一个服务激活器
@@ -1736,7 +1736,7 @@ Spring 集成提供了多种的 MessageHandler 实现开箱即用，但也可以
 
 另外，可以声明一个服务激活器，用于在返回一个新的有效载荷之前处理传入的消息。在这种情况下，这个 bean 应该是一个 GenericHandler 而非的 MessageHandler：
 
-```
+```java
 @Bean
     @ServiceActivator(inputChannel = "orderChannel",outputChannel = "completeOrder")
     public GenericHandler<Order> orderHandler(JPAOrderRepository orderRepository){
@@ -1752,7 +1752,7 @@ Spring 集成提供了多种的 MessageHandler 实现开箱即用，但也可以
 
 同时也可以通过传递了 MessageHandler 或 GenericHandler 去调用在流定义中的 handler() 方法，来使用在 Java DSL 配置式中的服务激活器：
 
-```
+```java
 public IntegrationFlow someFlow() {
     return IntegrationFlows
         ...
@@ -1766,7 +1766,7 @@ public IntegrationFlow someFlow() {
 
 如果服务激活器不是流的结束，handler() 可以接受 GenericHandler 。从之前应用订单存储服务激活器来看，可以使用 Java DSL 对流程进行配置
 
-```
+```java
 public IntegrationFlow orderFlow(OrderRepository orderRepo) {
     return IntegrationFlows
         ...
@@ -1788,7 +1788,7 @@ public IntegrationFlow orderFlow(OrderRepository orderRepo) {
 
 假设一个网关处理接受一个 String 的简单集成信息流，并把特定的 String 转成大写。网关接口可能是这个样子：
 
-```
+```java
 @Component
 @MessagingGateway(defaultRequestChannel = "inChannel",defaultReplyChannel = "outChannel")
 //没有必要实现这个接口,Spring Integration 自动提供运行时实现，这个实现会使用特定的通道进行数据的发送与接收。
@@ -1801,7 +1801,7 @@ public interface UpperCaseGateway {
 
 使用 Java DSL 配置的uppercase集成流
 
-```
+```java
 @Bean
     public IntegrationFlow uppercaseFlow(){
         return IntegrationFlows
@@ -1820,7 +1820,7 @@ public interface UpperCaseGateway {
 
 例如，声明一个入站通道适配器，它采用从 AtomicInteger 到流递增的数字。
 
-```
+```java
 @Bean
     @InboundChannelAdapter(
             poller = @Poller(fixedRate = "1000"),channel = "numberChannel"
@@ -1834,7 +1834,7 @@ public interface UpperCaseGateway {
 
 在 Java DSL 配置中类似的输入通道适配器：
 
-```
+```java
 @Bean
 public IntegrationFlow someFlow(AtomicInteger integerSource) {
     return IntegrationFlows
@@ -1852,7 +1852,7 @@ public IntegrationFlow someFlow(AtomicInteger integerSource) {
 
 下面的 Java 配置使用 FileReadingMessageSource 从 Spring Integration 的文件端点模块来实现这一目标：
 
-```
+```java
 @Bean
 @InboundChannelAdapter(channel="file-channel",
                        poller=@Poller(fixedDelay="1000"))
@@ -1866,7 +1866,7 @@ public MessageSource<File> fileReadingMessageSource() {
 
 或者基于Java DSL
 
-```
+```java
 @Bean
 public IntegrationFlow fileReaderFlow() {
     return IntegrationFlows
@@ -1919,7 +1919,7 @@ Spring Integration 提供了端点模块适配器，包括入站和出站，用�
 
 首先，定义一个简单的配置属性的类，来捕获如何处理 Taco Cloud 电子邮件：
 
-```
+```java
 @Data
 @Component
 @ConfigurationProperties(prefix = "tacocloud.email")
@@ -1940,7 +1940,7 @@ public class EmailProperties {
 
 application.yml:
 
-```
+```yml
 tacocloud:
   email:
     host: imap.tacocloud.com
