@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  * @author Yuyuan Huang
  * @create 2021-01-13 16:44
  */
-@Controller
+@Controller//
 public class HomeController {
     @GetMapping("/")
     public String home(){
