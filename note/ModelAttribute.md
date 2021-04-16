@@ -1,0 +1,1 @@
+The *@ModelAttribute* is an annotation that binds a method parameter or method return value to a named model attribute and then exposes it to a web view.
